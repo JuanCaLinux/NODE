@@ -1,11 +1,14 @@
 const express = require("express") /*forma de importar*/
-const {response, request} = require("express");
+const logger = require("./loggerMiddleware")
+const cors = require('cors')
 
 /*DECIR QUE LA APP VA A USAR EXPRESS*/
 const app = express()
 
 /*PARA QUE SE PUEDA ENVIAR UN JSON EN EL POST*/
-app.use(express.json())
+app.use(cors()) //dependencia que se instala para que acepte que cualquiera use nuestra api
+app.use(express.json()); //middleware
+app.use(logger)
 
 let notes =[
     {
@@ -90,6 +93,14 @@ app.post("/api/notes",(request,response)=>{
     notes = [...notes,newNote]
     response.status(201).json(newNote)
 })
+
+app.use((request,response)=>{
+    console.log("no existe la ruta");
+    response.status(404).json({
+        error: "not found"
+    })
+})
+
 
 /*SE PONE UN SERVIDOR Y HACE QUE LA APP EMPIEZE A ESCUCHAR EN ESE SERVIDOR, QUE LO OCUPE BASICAMENTE*/
 const PORT = 3001
