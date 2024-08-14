@@ -141,8 +141,8 @@ app.use(handleErrors)
 
 /*SE PONE UN SERVIDOR Y HACE QUE LA APP EMPIEZE A ESCUCHAR EN ESE SERVIDOR, QUE LO OCUPE BASICAMENTE*/
 const PORT = process.env.PORT || 3001
-const server = app.listen(PORT,()=>{
-    console.log(`server running on port ${PORT}`)
-})
+// const server = app.listen(PORT,()=>{
+//     console.log(`server running on port ${PORT}`)
+// })
 
-module.exports = {app}
+module.exports = app
