@@ -1,44 +1,23 @@
+require("./ConexionBD/mongo") /*importa la clase mongo o mas bien la ejecuta que es la que se conecta a la DB*/
 const express = require("express") /*forma de importar*/
-const logger = require("./loggerMiddleware")
+const logger = require("./MIddlewares/loggerMiddleware")
+const notFound = require("./MIddlewares/notFound")
+const handleErrors = require("./MIddlewares/handleErrors")
 const cors = require('cors')
+const Note = require("./Models/Note")
+const mongoose = require("mongoose")
+const usersRouter = require("./Controllers/users")
+const loginRouter = require("./Controllers/login")
+const User = require("./Models/User")
+const userExtractor = require("./MIddlewares/userExtractor")
 
 /*DECIR QUE LA APP VA A USAR EXPRESS*/
 const app = express()
+app.use(cors()) //dependencia que se instala para que acepte que cualquiera use nuestra api
 
 /*PARA QUE SE PUEDA ENVIAR UN JSON EN EL POST*/
-app.use(cors()) //dependencia que se instala para que acepte que cualquiera use nuestra api
 app.use(express.json()); //middleware
-app.use(logger)
-
-let notes =[
-    {
-        userId: 1,
-        id: 1,
-        title: "hola",
-        body: "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"
-    },
-    {
-        userId: 1,
-        id: 2,
-        title: "segunda",
-        body: "est rerum tempore vitae\nsequi sint nihil reprehenderit dolor beatae ea dolores neque\nfugiat blanditiis voluptate porro vel nihil molestiae ut reiciendis\nqui aperiam non debitis possimus qui neque nisi nulla"
-    },
-    {
-        userId: 1,
-        id: 3,
-        title: "ea molestias quasi exercitationem repellat qui ipsa sit aut",
-        body: "et iusto sed quo iure\nvoluptatem occaecati omnis eligendi aut ad\nvoluptatem doloribus vel accusantium quis pariatur\nmolestiae porro eius odio et labore et velit aut"
-    }
-]
-
-/*
-ASI SE CREABA SIN EXPRESS EL SERVIDOS
-
-const app = http.createServer((request,response)=> {
-    response.writeHead(200,{"Content-Type":"application/json"})
-    response.end(JSON.stringify(notes))
-}
-)*/
+app.use(logger) /*middleware para ver que se ejecuta cada que cambia*/
 
 /*ESTO ES LA PAGINA DE BIENVENIDA */
 app.get("/",(request,response)=>{
@@ -46,64 +25,124 @@ app.get("/",(request,response)=>{
 })
 
 /*OBTENER TODAS LAS NOTAS*/
-app.get("/api/notes",(request,response)=>{
+app.get("/api/notes",async (request,response)=> {
+    // Note.find({}).then(notes=>{
+    //     response.json(notes)
+    // })
+
+    const notes = await Note.find({}).populate("user",{
+      userName:1,
+      name:1
+    })
     response.json(notes)
+
 })
 
 /*OBTENER UNA NOTA EN CONCRETO*/
-app.get("/api/notes/:id",(request,response)=>{
-   const id = Number(request.params.id)
-    const note = notes.find(note=>note.id===id)
+app.get("/api/notes/:id",async (request,response,next)=>{
+   const id = request.params.id
 
-    if (note){
-        response.json(note)
-    }else{
-        response.status(404).end()
+    try{
+        const note = await Note.findById(id)
+        note ? response.json(note): response.status(404).end
+    }catch (err){
+       next(err)
+        response.status(400).end
     }
+
+
+
+    // Note.findById(id).then(note=>{
+    //     if (note){
+    //         response.json(note)
+    //     }else{
+    //         response.status(404).end()
+    //     }
+    // }).catch(err=>{
+    //     next(err)
+    //     console.log(err)
+    //     response.status(400).end()
+    // })
+
+
 })
 
+/*MODIFICAR UNA NOTA*/
+app.put("/api/notes/:id",userExtractor,(request,response,next)=>{
+    const {id} = request.params
+    const note = request.body
+
+    const newNoteInfo ={
+        content:note.content,
+        important:note.important
+    }
+
+    Note.findByIdAndUpdate(id,newNoteInfo,{new:true})
+      .then(result=>{
+          response.json(result)
+      }).catch(next)
+})
 /*BORRAR UNA NOTA EN CONCRETO*/
-app.delete("/api/notes/:id",(request,response)=>{
-    const id = Number(request.params.id)
-    notes = notes.filter(note=>note.id !== id)
-    response.status(404).end()
+app.delete("/api/notes/:id",userExtractor,(request,response,next)=>{
+
+    const id = request.params.id
+
+    // if (!mongoose.Types.ObjectId.isValid(id)) {
+    //     return response.status(400).send('Invalid note ID format hola');
+    // }
+    Note.findByIdAndDelete(id).then(()=>{
+        response.status(204).end()
+    }).catch(err=>{
+        next(err)
+    })
+
 })
 
 
 /* CREAR UNA NUEVA NOTA */
-app.post("/api/notes",(request,response)=>{
-    const note = request.body
+app.post("/api/notes",userExtractor,async (request,response,next)=>{
+     const {content,important = false} = request.body
 
-    if(!note || !note.body || !note.title){
+  //usando middleware user extractor para recuperar el usuario
+  const {userId} = request
+
+     const user = await User.findById(userId)
+
+    if(!content){
         return response.status(400).json({
-            error:"note.body is missing or note.title is missing"
+            error:"note.content is missing"
         })
     }
 
-    const ids = notes.map(note =>note.id);
-    const maxId = Math.max(...ids) //siempre las anteriores ids para que si alguien al mismo tiempo sobreescribe la api, no haya error
-
-    const newNote ={
-        userId:maxId+1,
-        id: maxId +1,
-        title:note.title,
-        body:note.body
-    }
-
-    notes = [...notes,newNote]
-    response.status(201).json(newNote)
-})
-
-app.use((request,response)=>{
-    console.log("no existe la ruta");
-    response.status(404).json({
-        error: "not found"
+    const newNote = new Note({
+        content: content,
+        date: new Date(),
+        important,
+        user: user._id
     })
+
+    // newNote.save()
+    //   .then(savedNote=>{
+    //     response.json(savedNote)
+    // })
+
+    const savedNote =  await newNote.save()
+    user.notes = user.notes.concat(savedNote._id)
+    await user.save()
+    response.json(savedNote)
+
 })
 
+app.use("/api/users",usersRouter)
+app.use("/api/login",loginRouter)
+
+app.use(notFound)
+app.use(handleErrors)
 
 /*SE PONE UN SERVIDOR Y HACE QUE LA APP EMPIEZE A ESCUCHAR EN ESE SERVIDOR, QUE LO OCUPE BASICAMENTE*/
 const PORT = process.env.PORT || 3001
-app.listen(PORT,()=>{
+const server = app.listen(PORT,()=>{
     console.log(`server running on port ${PORT}`)
 })
+
+module.exports = {app,server}
